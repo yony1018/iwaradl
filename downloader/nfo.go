@@ -3,7 +3,6 @@ package downloader
 import (
 	"encoding/xml"
 	"fmt"
-	"io"
 	"iwaradl/api"
 	"iwaradl/util"
 	"os"
@@ -54,13 +53,13 @@ func WriteNfoToPath(vi api.VideoInfo, path string) (title string, outPath string
 // UpdateNfoFiles Update all nfo files in a directory
 func UpdateNfoFiles(rootDir string, delay int) {
 	util.DebugLog("Start updating nfo files in %s", rootDir)
-	nfoFiles := []string{}
+	mp4Files := []string{}
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".nfo") {
-			nfoFiles = append(nfoFiles, path)
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".mp4") {
+			mp4Files = append(mp4Files, path)
 		}
 		return nil
 	})
@@ -71,36 +70,44 @@ func UpdateNfoFiles(rootDir string, delay int) {
 		return
 	}
 
-	total := len(nfoFiles)
+	total := len(mp4Files)
 	util.DebugLog("Found %d nfo files to update.", total)
 
-	for i, nfoPath := range nfoFiles {
-		baseName := strings.TrimSuffix(filepath.Base(nfoPath), ".nfo")
-		parts := strings.Split(baseName, "-")
-		if len(parts) < 2 {
-			util.DebugLog("Invalid nfo filename format, skipping: %s", filepath.Base(nfoPath))
+	for i, mp4Path := range mp4Files {
+		baseName := strings.TrimSuffix(filepath.Base(mp4Path), ".nfo")
+		vid := strings.Split(mp4Path, "]")[2]
+		vid = strings.Split(vid, "[")[1]
+		if len(vid) < 2 {
+			util.DebugLog("Invalid nfo filename format, skipping: %s", filepath.Base(mp4Path))
 			continue
 		}
-		vid := parts[len(parts)-1]
 
 		fmt.Printf("Updating [%d/%d]: %s (ID: %s)\n", i+1, total, baseName, vid)
 
 		// 1. read and parse nfo file
-		xmlFile, err := os.Open(nfoPath)
-		if err != nil {
-			util.DebugLog("Failed to open nfo file %s: %v", nfoPath, err)
-			println("Error: " + err.Error())
-			continue
-		}
+		//xmlFile, err := os.Open(mp4Path)
+		//if err != nil {
+		//	util.DebugLog("Failed to open nfo file %s: %v", mp4Path, err)
+		//	println("Error: " + err.Error())
+		//	continue
+		//}
+		//
+		//xmlData, _ := io.ReadAll(xmlFile)
+		//xmlFile.Close()
+		//
+		//var nfoData api.JellyfinNfo
+		//err = xml.Unmarshal(xmlData, &nfoData)
+		//if err != nil {
+		//	util.DebugLog("Failed to unmarshal nfo file %s: %v", mp4Path, err)
+		//	println("Error parsing " + baseName + ": " + err.Error())
+		//	continue
+		//}
 
-		xmlData, _ := io.ReadAll(xmlFile)
-		xmlFile.Close()
-
-		var nfoData api.JellyfinNfo
-		err = xml.Unmarshal(xmlData, &nfoData)
-		if err != nil {
-			util.DebugLog("Failed to unmarshal nfo file %s: %v", nfoPath, err)
-			println("Error parsing " + baseName + ": " + err.Error())
+		// 1. check nfo files are exist or not
+		nfoPath := strings.TrimSuffix(mp4Path, ".mp4") + ".nfo"
+		_, err := os.Stat(nfoPath)
+		if err == nil {
+			fmt.Println("[SKIP] " + nfoPath + " exists, skip!")
 			continue
 		}
 
@@ -109,17 +116,18 @@ func UpdateNfoFiles(rootDir string, delay int) {
 		videoInfo, err := api.GetVideoInfo(vid, "www.iwara.tv")
 		if err != nil {
 			util.DebugLog("Failed to get video info for %s on iwara.tv: %v", vid, err)
-			println("Error: " + err.Error())
+			println("[ERROR] Scrape failed on https://www.iwara.tv/video/" + vid + " | Debug info: " + err.Error())
 			println("Trying www.iwara.ai...")
 			videoInfo, err = api.GetVideoInfo(vid, "www.iwara.ai")
 			if err != nil {
 				util.DebugLog("Failed to get video info for %s on iwara.ai: %v", vid, err)
-				println("Error: " + err.Error())
+				println("[ERROR] Scrape failed on https://www.iwara.ai/video/" + vid + " | Debug info: " + err.Error())
 				continue
 			}
 		}
 
 		// 3. Update info in nfo
+		var nfoData api.JellyfinNfo
 		nfoData.Title = videoInfo.Title
 		nfoData.Director = videoInfo.User.Name
 		nfoData.Plot = strings.ReplaceAll(videoInfo.Body, "\n", "<br/>\n")
@@ -136,18 +144,19 @@ func UpdateNfoFiles(rootDir string, delay int) {
 		updatedXml, err := xml.MarshalIndent(nfoData, "", "  ")
 		if err != nil {
 			util.DebugLog("Failed to marshal updated nfo for %s: %v", vid, err)
-			println("Error: " + err.Error())
+			println("[ERROR] Marshal update failed on https://www.iwara.tv/video/" + vid + " | Debug info: " + err.Error())
 			continue
 		}
 
 		err = os.WriteFile(nfoPath, []byte(xml.Header+string(updatedXml)), 0644)
 		if err != nil {
 			util.DebugLog("Failed to write updated nfo for %s: %v", vid, err)
-			println("Error: " + err.Error())
+			println("[ERROR] Write failed on https://www.iwara.tv/video/" + vid + " | Debug info: " + err.Error())
 			continue
 		}
 
 		util.DebugLog("Successfully updated nfo for video ID: %s", vid)
+		println("[SUCCESS] Scraped title: " + nfoData.Title)
 
 		// 5. Rate Limit
 		if i < total-1 {
