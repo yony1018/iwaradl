@@ -75,7 +75,7 @@ func UpdateNfoFiles(rootDir string, delay int) {
 
 	for i, mp4Path := range mp4Files {
 		baseName := strings.TrimSuffix(filepath.Base(mp4Path), ".nfo")
-		vid := strings.Split(mp4Path, "]")[2]
+		vid := strings.Split(baseName, "]")[2]
 		vid = strings.Split(vid, "[")[1]
 		if len(vid) < 2 {
 			util.DebugLog("Invalid nfo filename format, skipping: %s", filepath.Base(mp4Path))
