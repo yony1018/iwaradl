@@ -72,6 +72,9 @@ func ConcurrentDownloadWithOptions(opts DownloadOptions) int {
 	origProxyURL := config.Cfg.ProxyUrl
 	origFilenameTemplate := config.Cfg.FilenameTemplate
 
+	if opts.RootDir != "" {
+		config.Cfg.RootDir = opts.RootDir
+	}
 	if opts.UseSubDirSet {
 		config.Cfg.UseSubDir = opts.UseSubDir
 	}

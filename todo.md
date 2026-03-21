@@ -1,0 +1,6 @@
+- [trending_downlaod_iwara.sh]更新下载至[000iwara000]
+    - [classify.sh]自动分类至[002creators_high_value002]
+    - 手动分类至[001-007]
+    - [nfo_info_scrap.sh]自动获取nfo信息并保存
+- 手动下载订阅用户
+    - [classify.sh]自动分类至[002creators_high_value002]

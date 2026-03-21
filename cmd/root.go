@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"iwaradl/config"
 	"iwaradl/downloader"
 	"iwaradl/util"
@@ -29,6 +30,12 @@ var (
 	filenameTemplate string
 	threadNum        int
 	maxRetry         int
+	classify         bool
+	csfSourceDir     string
+	csfTargetDir     string
+	syncCreators     bool
+	creatorRootDir   string
+	creatorHost      string
 )
 
 // rootCmd represents the base command
@@ -44,7 +51,7 @@ var rootCmd = &cobra.Command{
 	Args:         cobra.ArbitraryArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !resumeJob && len(args) == 0 && listFile == "" && !updateNfo {
+		if !resumeJob && len(args) == 0 && listFile == "" && !updateNfo && !classify && !syncCreators {
 			return cmd.Help()
 		}
 
@@ -55,6 +62,34 @@ var rootCmd = &cobra.Command{
 				return errors.New("root-dir flag must be specified when updating nfo files")
 			}
 			downloader.UpdateNfoFiles(rootDir, updateDelay)
+			return nil
+		}
+
+		if classify && syncCreators {
+			return errors.New("classify flag CANNOT be used WITH sync-creators flag")
+		}
+
+		if classify {
+			if csfSourceDir == "" || csfTargetDir == "" {
+				return errors.New("LACK of --classify-source-dir or --classify-target-dir flag when using --classify")
+			}
+			downloader.Classify(csfSourceDir, csfTargetDir)
+			return nil
+		}
+
+		if syncCreators {
+			// 功能维护中
+			fmt.Printf("[WARN] sync-creators feature is under maintenance, please try again later\n")
+			return errors.New("sync-creators feature is under maintenance, please try again later")
+
+			// TODO:
+			if creatorRootDir == "" {
+				return errors.New("LACK of --creator-root-dir flag when using --sync-creators")
+			}
+			if creatorHost == "" {
+				creatorHost = "www.iwara.tv"
+			}
+			downloader.SyncCreatorsVideos(creatorRootDir, creatorHost)
 			return nil
 		}
 
@@ -173,4 +208,12 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&filenameTemplate, "filename-template", "", "output filename template")
 	rootCmd.PersistentFlags().IntVar(&threadNum, "thread-num", -1, "concurrent download thread number")
 	rootCmd.PersistentFlags().IntVar(&maxRetry, "max-retry", -1, "max retry times")
+	//---------------------modified---------------------//
+	rootCmd.PersistentFlags().BoolVar(&classify, "classify", false, "auto classify mp4&nfo into creators folder")
+	rootCmd.PersistentFlags().StringVar(&csfSourceDir, "classify-source-dir", "", "source directory for classify")
+	rootCmd.PersistentFlags().StringVar(&csfTargetDir, "classify-target-dir", "", "target creator directory for classify")
+	rootCmd.PersistentFlags().BoolVar(&syncCreators, "sync-creators", false, "scan creator dirs and download all videos from each creator")
+	rootCmd.PersistentFlags().StringVar(&creatorRootDir, "creator-root-dir", "", "root directory under which creator folders are located")
+	rootCmd.PersistentFlags().StringVar(&creatorHost, "creator-host", "www.iwara.tv", "host for creator video queries (www.iwara.tv or www.iwara.ai)")
+
 }

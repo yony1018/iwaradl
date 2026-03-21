@@ -2,7 +2,6 @@ package downloader
 
 import (
 	"encoding/xml"
-	"fmt"
 	"iwaradl/api"
 	"iwaradl/util"
 	"os"
@@ -54,12 +53,19 @@ func WriteNfoToPath(vi api.VideoInfo, path string) (title string, outPath string
 func UpdateNfoFiles(rootDir string, delay int) {
 	util.DebugLog("Start updating nfo files in %s", rootDir)
 	mp4Files := []string{}
+	nfoFiles := []string{}
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".mp4") {
-			mp4Files = append(mp4Files, path)
+		if !info.IsDir() {
+			lower := strings.ToLower(info.Name())
+			if strings.HasSuffix(lower, ".mp4") {
+				mp4Files = append(mp4Files, path)
+			}
+			if strings.HasSuffix(lower, ".nfo") {
+				nfoFiles = append(nfoFiles, path)
+			}
 		}
 		return nil
 	})
@@ -70,44 +76,32 @@ func UpdateNfoFiles(rootDir string, delay int) {
 		return
 	}
 
+	// 为每个 mp4 文件生成 nfo 文件
 	total := len(mp4Files)
-	util.DebugLog("Found %d nfo files to update.", total)
-
+	util.DebugLog("Found %d mp4 files to update.", total)
 	for i, mp4Path := range mp4Files {
-		baseName := strings.TrimSuffix(filepath.Base(mp4Path), ".nfo")
-		vid := strings.Split(baseName, "]")[2]
-		vid = strings.Split(vid, "[")[1]
+		baseName := strings.TrimSuffix(filepath.Base(mp4Path), ".mp4")
+		start := strings.LastIndex(baseName, "[")
+		end := strings.LastIndex(baseName, "]")
+		var vid string
+		if start != -1 && end != -1 && end > start {
+			vid = baseName[start+1 : end]
+		} else {
+			vid = ""
+		}
+
 		if len(vid) < 2 {
 			util.DebugLog("Invalid nfo filename format, skipping: %s", filepath.Base(mp4Path))
 			continue
 		}
 
-		fmt.Printf("Updating [%d/%d]: %s (ID: %s)\n", i+1, total, baseName, vid)
-
-		// 1. read and parse nfo file
-		//xmlFile, err := os.Open(mp4Path)
-		//if err != nil {
-		//	util.DebugLog("Failed to open nfo file %s: %v", mp4Path, err)
-		//	println("Error: " + err.Error())
-		//	continue
-		//}
-		//
-		//xmlData, _ := io.ReadAll(xmlFile)
-		//xmlFile.Close()
-		//
-		//var nfoData api.JellyfinNfo
-		//err = xml.Unmarshal(xmlData, &nfoData)
-		//if err != nil {
-		//	util.DebugLog("Failed to unmarshal nfo file %s: %v", mp4Path, err)
-		//	println("Error parsing " + baseName + ": " + err.Error())
-		//	continue
-		//}
+		util.DebugLog("Updating [%d/%d]: %s (ID: %s)", i+1, total, baseName, vid)
 
 		// 1. check nfo files are exist or not
 		nfoPath := strings.TrimSuffix(mp4Path, ".mp4") + ".nfo"
 		_, err := os.Stat(nfoPath)
 		if err == nil {
-			fmt.Println("[SKIP] " + nfoPath + " exists, skip!")
+			util.DebugLog("[SKIP] %s exists, skip!", nfoPath)
 			continue
 		}
 
@@ -164,5 +158,29 @@ func UpdateNfoFiles(rootDir string, delay int) {
 			time.Sleep(time.Duration(delay) * time.Second)
 		}
 	}
+
+	// 检查是否有 nfo 文件没有对应的 mp4 文件，如果没有则移动到 .trash 目录
+	total = len(nfoFiles)
+	util.DebugLog("Found %d nfo files to re-check.", total)
+	trashDir := filepath.Join(rootDir, ".trash")
+	_ = os.MkdirAll(trashDir, 0755)
+	for i, nfoPath := range nfoFiles {
+		stem := strings.TrimSuffix(filepath.Base(nfoPath), ".nfo")
+		mp4Path := filepath.Join(filepath.Dir(nfoPath), stem+".mp4")
+		if _, err := os.Stat(mp4Path); os.IsNotExist(err) {
+			// move orphan nfo to trash
+			trashPath := filepath.Join(trashDir, filepath.Base(nfoPath))
+			if err := os.Rename(nfoPath, trashPath); err != nil {
+				util.DebugLog("Failed to move orphan nfo %s to .trash: %v", nfoPath, err)
+				println("[ERROR] Failed to move orphan nfo " + nfoPath + " to .trash: " + err.Error())
+			} else {
+				util.DebugLog("Moved orphan nfo %s to .trash", nfoPath)
+			}
+		}
+		if i%10 == 0 {
+			util.DebugLog("Checked %d/%d nfo files", i+1, total)
+		}
+	}
+
 	println("NFO update process finished.")
 }
